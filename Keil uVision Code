@@ -1,0 +1,161 @@
+// FOSC = 12MHz
+// CCLK = 60MHz
+// PCLK = 30MHz
+#include <LPC214X.H>
+#define LCD_CLEAR 0x01
+#define CURSOR_OFF 0x0C
+#define FIRST_ROW 0x80
+#define SECOND_ROW 0xC0
+#define Enable_Pulse()
+IOSET0|=1<<EN;Delay_ms(1);IOCLR0=1<<EN;Delay_ms(1);
+// Pin Configuration for LCD
+#define RS 2
+#define RW 3
+#define EN 4
+// Function Prototype
+void RTC_Init(void);
+__irq void RTC_ISR(void); //RTC Interrupt Function Prototype
+extern void Delay_ms(unsigned long times);
+extern void Lcd_Init(void);
+extern void Lcd_Cmd(unsigned char value);
+extern void Lcd_Write(unsigned char value);
+extern void Lcd_Write_Text(unsigned char msg[]);
+extern void Lcd_Data_Shift(unsigned char value);
+unsigned char flag = 1;
+int main()
+{
+unsigned char msg[] = "Roll 32,33,37";
+unsigned char rtc_example[] = "ES&RTOS Proj";
+unsigned char TIME[] = "TIME:";
+unsigned char DATE[] = "DATE:";
+RTC_Init();
+VICVectAddr13 = (unsigned)RTC_ISR; //Vector Address of RTC Interrupt
+VICVectCntl13 = 0x20 | 0x0D; //Enable the Vector IRQ Slot for
+RTC Interrupt
+VICIntEnable = (1UL<<13); //Enable the RTC Interrupt
+Lcd_Init();
+Delay_ms(10);
+Lcd_Write_Text(msg);
+Lcd_Cmd(SECOND_ROW);
+Lcd_Write_Text(rtc_example);
+
+Delay_ms(500);
+Lcd_Cmd(LCD_CLEAR);
+Lcd_Write_Text(TIME);
+Lcd_Cmd(SECOND_ROW);
+Lcd_Write_Text(DATE);
+while(1)
+{
+if(flag)
+{
+Lcd_Cmd(FIRST_ROW+8);
+Lcd_Write(HOUR/10 + 0x30);
+Lcd_Write(HOUR%10 + 0x30);
+Lcd_Write(':');
+Lcd_Write(MIN/10 + 0x30);
+Lcd_Write(MIN%10 + 0x30);
+Lcd_Write(':');
+Lcd_Write(SEC/10 + 0x30);
+Lcd_Write(SEC%10 + 0x30);
+Lcd_Cmd(SECOND_ROW+6);
+Lcd_Write(DOY/10 + 0x30);
+Lcd_Write(DOY%10 + 0x30);
+Lcd_Write('/');
+Lcd_Write(MONTH/10 + 0x30);
+Lcd_Write(MONTH%10 + 0x30);
+Lcd_Write('/');
+Lcd_Write(YEAR/1000 + 0x30);
+Lcd_Write((YEAR/100)%10 + 0x30);
+Lcd_Write((YEAR/10)%10 + 0x30);
+Lcd_Write(YEAR%10 + 0x30);
+flag = 0;
+}
+}
+}
+//Function Definition
+void RTC_Init(void)
+{
+DOY = 01; //Enter Date
+MONTH = 04; //MONTH
+YEAR = 2020; //Year
+HOUR = 18; //Hour
+MIN = 21; //Min
+SEC = 0; //Sec
+PREINT = 0x392; //To Generate clock of 32.768KHz for RTC Module
+
+PREFRAC = 0x4380; //when PCLK = 30MHz
+/*
+Formula For Calculation is as follow:-
+PREINT = (int)(PCLK/32768)-1
+PREFRAC = PCLK - ((PREINT+1)*32768
+Example:-
+if PCLK = 30MHz
+PREINT = 914 = 0x392
+PREFRAC = 17280 = 0x4380
+*/
+CIIR = 0x01; //Enables Second Counter Interrupt
+CCR = 0x01; //Start RTC}
+__irq void RTC_ISR(void)
+{
+flag = 1;
+ILR = 0x01; //Clear the RTC Interrupt Flag
+VICVectAddr = 0x00;}
+void Lcd_Init(void)
+{
+PINSEL0 = 0x00;
+IODIR0 |= (1<<RS); //RS Pin as Output Pin
+IODIR0 |= (1<<RW); //RW Pin as Output Pin
+IODIR0 |= (1<<EN); //EN Pin as Output Pin
+IODIR0 |= 0x0000FF00; //P0.8 to P0.15 as Data Line of LCD
+Lcd_Cmd(0x38); //Send 8-bit initialization command to lcd
+Delay_ms(10);
+Lcd_Cmd(CURSOR_OFF); //Cursor OFF
+Delay_ms(10);
+Lcd_Cmd(LCD_CLEAR);
+Delay_ms(1);
+Lcd_Cmd(FIRST_ROW);
+}
+void Lcd_Data_Shift(unsigned char value)
+{/* This Function will shift the eight bit data stored in variable
+value,
+to the Port Pin P0.8 to P0.15 Successfully. */
+unsigned char i;
+for(i=0;i<8;i++)
+{
+if(value & 0x01)
+{IOSET0 |= (1<<(i+8));}
+else{IOCLR0 |= (1<<(i+8));}
+value = value >> 1;}
+
+}
+void Lcd_Cmd(unsigned char value)
+{
+/*Configure LCD for receiving Command Data*/
+IOCLR0 |= (1<<RS);
+IOCLR0 |= (1<<RW);
+IOSET0 |= (1<<EN);
+Lcd_Data_Shift(value);
+Enable_Pulse();
+}
+void Lcd_Write(unsigned char value)
+{
+/*Configure LCD for receiving Display Data*/
+IOSET0 |= (1<<RS);
+IOCLR0 |= (1<<RW);
+IOSET0 |= (1<<EN);
+Lcd_Data_Shift(value);
+Enable_Pulse();
+}
+void Lcd_Write_Text(unsigned char msg[])
+{
+while(*msg)
+{Lcd_Write(*msg);
+Msg++;}
+}
+//Delay Function
+void Delay_ms(unsigned long times)
+{
+unsigned long i,j;
+for(j=0;j<times;j++)
+for(i=0;i<7500;i++);
+}
